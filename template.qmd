@@ -1,0 +1,53 @@
+---
+title: "Project 1"
+subtitle: "Bias Correction: Quantile Quantile Mapping"
+jupyter: julia-1.9
+date: 2023-11-13
+author: "Coleman Nickum (CN33)" 
+
+number-sections: true
+code-annotations: hover
+
+kind: "Project"
+Module: "2"
+categories:
+    - "Module 2"
+    - "Project"
+
+format:
+    html: 
+        toc-depth: 3
+    docx: 
+        toc: true
+        toc-depth: 3
+        fig-format: png
+---
+## Setup
+
+```{julia}
+#| output: false
+using Dates
+using MultivariateStats
+using Plots
+using NCDatasets
+using StatsBase
+using Unitful
+
+Plots.default(; margin=4Plots.mm, size=(700, 400), linewidth=2)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
