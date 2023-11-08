@@ -37,6 +37,11 @@ Plots.default(; margin=4Plots.mm, size=(700, 400), linewidth=2)
 ```
 
 
+```{julia}
+ds_alldata = NCDataset("data/precip.nc")
+println(ds_precip)
+```
+
 
 
 
