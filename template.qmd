@@ -37,12 +37,61 @@ Plots.default(; margin=4Plots.mm, size=(700, 400), linewidth=2)
 ```
 
 
+# Define the years of interest (1972 to 2022)
 ```{julia}
-ds_alldata = NCDataset("data/all_data.nc")
-println(ds_alldata)
+years = 1972:2022
+``` 
+
+# Initialize an empty container to store the combined data
+```{julia}
+combined_data = []
 ```
 
+# Loop through the years
+```{julia}
+for year in years
+    # Construct the file path for the current year
+    filepath = "data/raw/2m_temperature_$year.nc"
 
+    try
+        # Open the NetCDF dataset for the current year
+        ds = NCDataset(filepath)
+
+        # Extract the 't2m' data for the current year
+        t2m_data = ds["t2m"][:]
+
+        # Append the data to the container
+        push!(combined_data, t2m_data)
+
+        # Close the NetCDF dataset
+        close(ds)
+    catch e
+        println("Error processing data for year $year: $e")
+    end
+end
+```
+
+# Combine the data from all years along the time dimension
+```{julia}
+combined_t2m_data = vcat(combined_data...)
+```
+
+# Print the dimensions of the combined dataset
+```{julia}
+println("Combined Dataset Dimensions: $(size(combined_t2m_data))")
+```
+
+```{julia}
+ds_temp = NCDataset("data/raw/2m_temperature_1972.nc")
+println(ds_temp)
+```
+
+```{julia}
+temp_time = ds_temp["time"][:];
+temp_lon = ds_temp["longitude"][:];
+temp_lat = ds_temp["latitude"][:];
+temp = ds_temp["t2m"][:,:,:];
+```
 
 
 
