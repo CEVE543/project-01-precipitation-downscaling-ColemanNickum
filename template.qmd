@@ -37,6 +37,16 @@ using DataFrames
 Plots.default(; margin=4Plots.mm, size=(700, 400), linewidth=2)
 ```
 
+```{julia}
+ds_data = NCDataset("data/all_data.nc")
+println(ds_data)
+```
+
+```{julia}
+temp_data= ds_data["t2m"][:]
+```
+
+
 
 ```{julia}
 
