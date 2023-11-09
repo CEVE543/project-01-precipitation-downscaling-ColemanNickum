@@ -8,7 +8,7 @@ HOMEDIR = abspath(dirname(@__FILE__))
 function download_2m_temperature_data(start_year, end_year, output_dir)
     for year in start_year:end_year
         filename = joinpath(output_dir, "2m_temperature_$year.nc")
-        variable = "2m_temperature"
+        variable = "t2m"
         download_single_level_data(year, filename, variable)
     end
 end
@@ -35,9 +35,8 @@ data_dir = joinpath(current_dir, "data", "raw")
 fnames = glob("2m_temperature_*.nc", data_dir)
 
 # Open and concatenate the datasets
-t2m_combined = open_mfdataset(fnames, "2m_temperature")
+t2m_combined = open_mfdataset(fnames, "t2m")
 
-end
 
 
 function open_mfdataset(files::Vector{String}, variable_name::AbstractString)
@@ -87,9 +86,9 @@ function open_mfdataset(files::Vector{String}, variable_name::AbstractString)
     for coord in coord_names
         concatenated_data_dict[coord] = vcat(coords_data_dict[coord]...)
     end
-
     return concatenated_data_dict
 end
+
 
 
 
