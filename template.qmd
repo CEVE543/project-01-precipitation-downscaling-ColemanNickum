@@ -32,76 +32,80 @@ using Plots
 using NCDatasets
 using StatsBase
 using Unitful
+using DataFrames
 
 Plots.default(; margin=4Plots.mm, size=(700, 400), linewidth=2)
 ```
 
 
-# Define the years of interest (1972 to 2022)
 ```{julia}
-years = 1972:2022
-``` 
 
-# Initialize an empty container to store the combined data
-```{julia}
-combined_data = []
-```
+# Find the "root" directory of your project
+HOMEDIR = abspath(dirname(@__FILE__))
 
-# Loop through the years
-```{julia}
-for year in years
-    # Construct the file path for the current year
-    filepath = "data/raw/2m_temperature_$year.nc"
+function open_mfdataset(files::Vector{String}, variable_name::AbstractString)
+    # Lists to store variable data, time data, and other coordinate data
+    var_data_list = []
+    time_data_list = []
+    coords_data_dict = Dict()
 
-    try
-        # Open the NetCDF dataset for the current year
-        ds = NCDataset(filepath)
+    # Open the first file to get the coordinate names (excluding time and the main variable)
+    ds = Dataset(files[1])
+    dimnames = keys(ds.dim)
+    coord_names = setdiff(collect(dimnames), [variable_name, "time"])
+    close(ds)
 
-        # Extract the 't2m' data for the current year
-        t2m_data = ds["t2m"][:]
-
-        # Append the data to the container
-        push!(combined_data, t2m_data)
-
-        # Close the NetCDF dataset
-        close(ds)
-    catch e
-        println("Error processing data for year $year: $e")
+    # Initialize lists for each coordinate in coords_data_dict
+    for coord in coord_names
+        coords_data_dict[coord] = []
     end
+
+    # Open each file, extract data, and store in lists
+    for file in files
+        ds = Dataset(file)
+
+        # Store variable and time data
+        push!(var_data_list, ds[variable_name][:])
+        push!(time_data_list, ds["time"][:])
+
+        # Store other coordinate data
+        for coord in coord_names
+            push!(coords_data_dict[coord], ds[coord][:])
+        end
+
+        close(ds)
+    end
+
+    # Pair variable data with time data and sort by time
+    sorted_pairs = sort(collect(zip(time_data_list, var_data_list)); by=x -> x[1])
+    sorted_time_data = [pair[1] for pair in sorted_pairs]
+    sorted_var_data = [pair[2] for pair in sorted_pairs]
+
+    # Concatenate sorted data
+    concatenated_data_dict = Dict(
+        variable_name => vcat(sorted_var_data...), "time" => vcat(sorted_time_data...)
+    )
+
+    # Concatenate coordinate data and add to the dictionary
+    for coord in coord_names
+        concatenated_data_dict[coord] = vcat(coords_data_dict[coord]...)
+    end
+
+    return concatenated_data_dict
 end
 ```
 
-# Combine the data from all years along the time dimension
-```{julia}
-combined_t2m_data = vcat(combined_data...)
-```
 
-# Print the dimensions of the combined dataset
 ```{julia}
-println("Combined Dataset Dimensions: $(size(combined_t2m_data))")
+data_dict = open_mfdataset(["data/raw/2m_temperature_2000.nc", "data/raw/2m_temperature_2001.nc", "data/raw/2m_temperature_2002.nc"], "t2m")
+
 ```
 
 ```{julia}
-ds_temp = NCDataset("data/raw/2m_temperature_1972.nc")
-println(ds_temp)
+df = DataFrame(
+    latitude = data_dict["latitude"][:],
+    time = data_dict["time"][:],
+    longitude = data_dict["longitude"][:],
+    t2m = data_dict["t2m"][:]
+)
 ```
-
-```{julia}
-temp_time = ds_temp["time"][:];
-temp_lon = ds_temp["longitude"][:];
-temp_lat = ds_temp["latitude"][:];
-temp = ds_temp["t2m"][:,:,:];
-```
-
-
-
-
-
-
-
-
-
-
-
-
-
