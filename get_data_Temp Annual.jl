@@ -92,4 +92,4 @@ function open_mfdataset(files::Vector{String}, variable_name::AbstractString)
 end
 
 
-data_dict = open_mfdataset(["data/raw/2m_temperature_2000.nc", "data/raw/2m_temperature_2001.nc", "data/raw/2m_temperature_2002.nc"], "temperature")
+
