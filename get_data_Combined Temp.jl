@@ -1,7 +1,7 @@
 using CDSAPI
 using NCDatasets
 using StatsBase: shuffle
-using Dataframes
+using DataFrames
 
 # Find the "root" directory of your project
 HOMEDIR = abspath(dirname(@__FILE__))
@@ -59,9 +59,4 @@ end
 
 
 data_dict = open_mfdataset(["data/raw/2m_temperature_2000.nc", "data/raw/2m_temperature_2001.nc", "data/raw/2m_temperature_2002.nc"], "t2m")
-df = DataFrame(
-    latitude = data_dict["latitude"],
-    time = data_dict["time"],
-    longitude = data_dict["longitude"],
-    t2m = data_dict["t2m"]
-)
+
