@@ -1,0 +1,115 @@
+```{julia}
+#| output: false
+using Dates
+using MultivariateStats
+using Plots
+using NCDatasets
+using StatsBase
+using Unitful
+using DataFrames
+using Statistics
+
+Plots.default(; margin=4Plots.mm, size=(700, 400), linewidth=2)
+```
+
+```{julia}
+function open_mfdataset(files::Vector{String}, variable_name::AbstractString)
+    # Similar to your existing open_mfdataset function
+    # ...
+
+    return concatenated_data_dict
+end
+
+function concat_and_save_temperature_data(
+    variable::AbstractString,
+    years::UnitRange{Int},
+    output_file::AbstractString;
+    output_dir="path/to/your/data/directory"
+)
+    # Initialize an empty array to store file paths
+    file_paths = []
+
+    # Loop over the specified years
+    for year in years
+        # Generate the filename for the current year
+        file_name = "2m_temperature_$year.nc"
+        file_path = joinpath(output_dir, file_name)
+
+        # Push the file path to the array
+        push!(file_paths, file_path)
+    end
+
+    # Open the first file to get coordinate names
+    first_ds = Dataset(file_paths[1])
+    coord_names = setdiff(keys(first_ds.dims), [variable, "time"])
+    close(first_ds)
+
+    # Initialize lists for each coordinate in coords_data_dict
+    coords_data_dict = Dict()
+    for coord in coord_names
+        coords_data_dict[coord] = []
+    end
+
+    # Open each file, extract coordinate data, and store in lists
+    for file in file_paths
+        ds = Dataset(file)
+        for coord in coord_names
+            push!(coords_data_dict[coord], ds[coord][:])
+        end
+        close(ds)
+    end
+
+    # Concatenate coordinate data
+    concatenated_data_dict = Dict()
+    for coord in coord_names
+        concatenated_data_dict[coord] = cat(coords_data_dict[coord]..., dims=length(coord_names) + 1)
+    end
+
+    # Save coordinate data to a new file
+    save_dataset(concatenated_data_dict, output_file)
+
+    return concatenated_data_dict
+end
+```
+```{julia}
+function concat_and_save_temperature_data(
+    variable::AbstractString,
+    years::UnitRange{Int},
+    output_file::AbstractString;
+    output_dir="path/to/your/data/directory"
+)
+    # Initialize an empty array to store file paths
+    file_paths = []
+
+    # Loop over the specified years
+    for year in years
+        # Generate the filename for the current year
+        file_name = "2m_temperature_$year.nc"
+        file_path = joinpath(output_dir, file_name)
+
+        # Push the file path to the array
+        push!(file_paths, file_path)
+    end
+
+    # Initialize an empty dataset
+    concatenated_dataset = nothing
+
+    # Open each file and concatenate datasets
+    for file in file_paths
+        ds = Dataset(file)
+        if isnothing(concatenated_dataset)
+            concatenated_dataset = ds
+        else
+            concatenate!(concatenated_dataset, ds)
+        end
+        close(ds)
+    end
+
+    # Save the concatenated dataset to a new file
+    save_dataset(concatenated_dataset, output_file)
+
+    return concatenated_dataset
+end
+```
+```{julia}
+dataset = concat_and_save_temperature_data("t2m", 2010:2022, "concatenated_data.nc", output_dir="/Users/coleman/Documents/GitHub/project-01-precipitation-downscaling-ColemanNickum/data/raw")
