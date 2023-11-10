@@ -113,3 +113,33 @@ end
 ```
 ```{julia}
 dataset = concat_and_save_temperature_data("t2m", 2010:2022, "concatenated_data.nc", output_dir="/Users/coleman/Documents/GitHub/project-01-precipitation-downscaling-ColemanNickum/data/raw")
+```
+
+--------------------------------------------------------
+```{julia}
+# Load the datasets
+ds1 = Dataset("/Users/coleman/Documents/GitHub/project-01-precipitation-downscaling-ColemanNickum/data/raw/2m_temperature_2011.nc")
+ds2 = Dataset("/Users/coleman/Documents/GitHub/project-01-precipitation-downscaling-ColemanNickum/data/raw/2m_temperature_2012.nc")
+```
+
+```{julia}
+# Extract the time, latitude, and longitude variables
+time1 = ds1["time"][:]
+time2 = ds2["time"][:]
+
+latitude = ds1["latitude"][:]
+longitude = ds1["longitude"][:]
+```
+```{julia}
+# Check if the latitudes and longitudes match
+@assert latitude == ds2["latitude"][:]
+@assert longitude == ds2["longitude"][:]
+```
+```{julia}
+# Concatenate the time dimension
+time_combined = vcat(time1, time2)
+```
+```{julia}
+# Create a new dataset with the combined time dimension
+ds_combined = NCDataset("/Users/coleman/Documents/GitHub/project-01-precipitation-downscaling-ColemanNickum/data/rawc", "c")  # "c" stands for "create"
+```
