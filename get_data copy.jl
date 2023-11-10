@@ -276,7 +276,6 @@ function run_demo()
         download_single_level_data.(
             year, joinpath(data_dir, "2m_temperature_$year.nc"), "2m_temperature"
         )
-
     end
 
     # read in all the 2m temperature data
