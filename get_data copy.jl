@@ -265,13 +265,13 @@ function glob(pattern::AbstractString, dir::AbstractString=".")
 end
 
 function run_demo()
+    global t2m  # Declare t2m as a global variable
 
     # the path to the raw data folder
     data_dir = joinpath(HOMEDIR, "data", "raw")
 
     years = 1972:2022 # example time range
     for year in years
-
         # Download 2m air temperature for the year 2020
         download_single_level_data.(
             year, joinpath(data_dir, "2m_temperature_$year.nc"), "2m_temperature"
@@ -282,10 +282,9 @@ function run_demo()
     fnames = shuffle(glob("2m_temperature", data_dir)) # shuffle -- should work even if out of order
     t2m = open_mfdataset(fnames, "t2m") # we sort based on time, so we don't need to sort here
 
-
     display(t2m)
 
-    return nothing
+    return t2m
 end
 run_demo()
 
