@@ -58,7 +58,7 @@ function open_mfdataset(files::Vector{String}, variable_name::AbstractString)
 end
 
 
-data_dict = open_mfdataset(["data/raw/2m_temperature_2000.nc", "data/raw/2m_temperature_2001.nc", "data/raw/2m_temperature_2002.nc"], "t2m")
+data_dict = open_mfdataset(["data/raw/2m_temperature_2001.nc", "data/raw/2m_temperature_2002.nc", "data/raw/2m_temperature_2003.nc"], "t2m")
 
 fnames = shuffle(glob("2m_temperature", data_dir)) # shuffle -- should work even if out of order
 t2m = open_mfdataset(fnames, "t2m") # we sort based on time, so we don't need to sort here
