@@ -38,3 +38,6 @@ Plots.default(; margin=4Plots.mm, size=(700, 400), linewidth=2)
 ```
 
 
+```{julia}
+data_dict = "t2m./Users/coleman/Documents/GitHub/project-01-precipitation-downscaling-ColemanNickum/get_data copy.jl"
+```
