@@ -137,15 +137,15 @@ time_data = Dates.Date.(temp_time)
 # Performing a typical split ratio (roughly 70:30) for training and testing data collected from 1979 to 2021. With 42 years of data, the training dataset will encompass 30 years and the testing period will be 12 years (2009 to 2021)
 split_idx = findfirst(time_data .== time_data[end] - Dates.Year(10))
 train_idx = 1:split_idx
-test_idx = (split_idx+1):length(time_data)
+test_idx = (split_idx+1):length(time_data);
 ```
 
 ## Testing and Training Period Variables
 ```{julia}
-precip_train = precip[:, :, train_idx]
-precip_test = precip[:, :, test_idx]
-temp_train = temp[:, :, train_idx]
-temp_test = temp[:, :, test_idx]
+precip_train = precip[:, :, train_idx];
+precip_test = precip[:, :, test_idx];
+temp_train = temp[:, :, train_idx];
+temp_test = temp[:, :, test_idx];
 ```
 
 # Preprocessing Data: Climatology and Mean Centering
