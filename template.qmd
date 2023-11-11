@@ -38,12 +38,9 @@ using Statistics
 Plots.default(; margin=4Plots.mm, size=(700, 400), linewidth=2)
 ```
 
-
+## Precipitation Data: ERA5 Reanalysis Dataset 
 ```{julia}
- = "t2m./Users/coleman/Documents/GitHub/project-01-precipitation-downscaling-ColemanNickum/get_data copy.jl"
-```
-
-```{julia}
+# Dataset covers daily precipitation (mm) from 1/1/1979 to 12/31/2020
 ds_precip = NCDataset("/Users/coleman/Documents/GitHub/project-01-precipitation-downscaling-ColemanNickum/data/raw/precip.nc")
 println(ds_precip)
 ```
@@ -65,48 +62,59 @@ precip = reverse(precip, dims=2);
 close(ds_precip)
 ```
 
+## Temperature Data: ERA5 Reanalysis Dataset 
 ```{julia}
-temp_time = t2m["time"][:];
-temp_lon = t2m["longitude"][:];
-temp_lat = t2m["latitude"][:];
-temp = t2m["t2m"][:];
+# Dataset covers daily temperature (Kelvin) from 1/1/1979 to 12/31/2020
+ds_temp = NCDataset("/Users/coleman/Documents/GitHub/project-01-precipitation-downscaling-ColemanNickum/data/raw/temp.nc")
+println(ds_temp)
 ```
-
+```{julia}
+temp_time = ds_temp["time"][:];
+temp_lon = ds_temp["longitude"][:];
+temp_lat = ds_temp["latitude"][:];
+temp = ds_temp["t2m"][:,:,:];
+```
 ```{julia}
 temp_lat = reverse(temp_lat)
-temp = reverse(temp, dims=1);
+temp = reverse(temp, dims=2);
 ```
 
+# Ensuring temperature and precipitation correspond to the same time period
 ```{julia}
-time = precip_time
+@assert temp_time == precip_time
+```
+```{julia}
+time_data = temp_time
 ```
 
 ## Splitting Data: Training Period vs Testing Period
 ```{julia}
 # Performing a typical split ratio (roughly 70:30) for training and testing data collected from 1979 to 2021. With 42 years of data, the training dataset will encompass 30 years and the testing period will be 12 years (2009 to 2021)
-split = time[end] - Dates.Year(12)
+split = time_data[end] - Dates.Year(12)
 
-training_period = findall(x -> x < split, time)
-testing_period = findall(x -> x >= split, time)
+training_period = findall(x -> x < split, time_data)
+testing_period = findall(x -> x >= split, time_data)
 ```
+
+# Training Period Variables
 ```{julia}
 precip_train = precip[:,:,training_period]
-temp_train = temp[training_period]
-time_train = time[training_period]
+temp_train = temp[:,:,training_period]
+time_train = time_data[training_period]
 ```
 
+# Testing Period Variables
 ```{julia}
 precip_test = precip[:,:,testing_period]
-temp_test = temp[testing_period]
-time_test = time[testing_period]
+temp_test = temp[:,:,testing_period]
+time_test = time_data[testing_period]
 ```
-
 
 ## Preprocessing Data: Climatology and Mean Centering
 ```{julia}
-function preprocess(temp::Array{T, 1}, temp_reference::Array{T, 1})::AbstractMatrix where T
+function preprocess(temp::Array{T, 3}, temp_reference::Array{T, 3})::AbstractMatrix where T
 #Computing anomalies that removes climatology from our matrix to allow greater clarity of temperature variations by removing the influence of climate patterns
-climatology = mean(temp_reference, dims=1)
+climatology = mean(temp_reference, dims=3)
 anomalies = temp .- climatology
  
 #Centering the variables (locations) in our matrix so that they have a mean of zero, which will allow us to better intepret the relationship (overall change/deiviations) between the intercept (first PC) to other PCs:
@@ -116,37 +124,11 @@ centered_temp = anomalies .- location_means
 #Reshaping our temperature dataset to produce a 2D matrix of time (rows) and locations (columns): 
 temp_mat_center = reshape(centered_temp, size(temp, 1) * size(temp, 2), size(temp, 3))
 temp_mat = temp_mat_center'
-    return temp_mat
+    return ustrip.(u"K", temp_mat)
 end
 ```
 
 ```{julia}
-# Extract the years and months from the time vector
-years = Dates.year.(temp_time)
-months = Dates.month.(temp_time)
-```
-
-```{julia}
-# Create a new DataFrame for easier manipulation
-using DataFrames
-df = DataFrame(Year = years, Month = months, Temperature = temp)
-```
-
-```{julia}
-# Compute the climatology (mean temperature for each month)
-climatology = combine(groupby(df, [:Month]), :Temperature => mean)
-
-# Create a line plot for the climatology
-plot(climatology[!, :Temperature_mean],
-     xlabel = "Month",
-     ylabel = "Mean Temperature",
-     label = "Climatology",
-     title = "Temperature Climatology",
-     xticks = (1:12, monthname.(1:12)),
-     legend = :topright)
-```
-
-```{julia}
-#Preprocessing temp_train to center, scale, and account for climatology
+#Preprocessing temp_train to mean center and account for climatology
 preprocessed_temp = preprocess(temp, temp_train);
 ```
