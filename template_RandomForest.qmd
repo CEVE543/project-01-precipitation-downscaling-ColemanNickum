@@ -346,8 +346,9 @@ X_test_pca = reshape(temp_test, 21 * 33, 3653)
 ```
 
 ```{julia}
-    y_train = reshape(precip_train,10 * 10, 11688)
-    y_test = reshape(precip_test, 10 * 10, 3653)
+    precip_train = ustrip(u"mm", precip_train)
+    
+    precip_test = ustrip(u"mm", precip_test)
 ```
 
 ```{julia}
