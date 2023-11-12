@@ -1,6 +1,6 @@
 ---
 title: "Project 1"
-subtitle: "Bias Correction: Quantile Quantile Mapping"
+subtitle: "Precipitation Downscaling"
 jupyter: julia-1.9
 date: 2023-11-13
 author: "Coleman Nickum (CN33)" 
@@ -313,7 +313,6 @@ plot(p1,p2, p3; size=(1000, 600), link=:both)
     mean_y_train = mean(skipmissing(y_train))
     y_train_no_missing = coalesce.(y_train, mean_y_train)
 ```
-
 ```{julia}
 X_train_pca = preprocess(temp_train, temp_train);
 X_test_pca = preprocess(temp_test, temp_train);
