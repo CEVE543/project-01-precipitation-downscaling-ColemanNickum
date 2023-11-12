@@ -181,12 +181,6 @@ temp_testing_matrix = preprocess(temp_test, temp_train);
 PCA_model = fit(PCA, temp_training_matrix; maxoutdim=10, pratio=0.999);
 ```
 
-```{julia}
-pc1 = projection(PCA_model)[:, 1]
-
-println(pc)
-```
-
 
 ## Plotting Variance Explained by PCs
 ```{julia}
@@ -221,7 +215,7 @@ I chose to select 4 principle components because, after plotting the cumulative 
 
 ## Plotting Spatial Patterns
 ```{julia}
-p = []
+p = [] 
 for i in 1:4
     pc = projection(PCA_model)[:, i]
     pc_reshaped = reshape(pc, n_lon, n_lat)'
@@ -242,7 +236,7 @@ plot(p...; layout=(1, 4), size=(1500, 600))
 
 ## Plotting Time Series
 ```{julia}
-pc_ts = predict(PCA_model, temp_training_matrix)
+
 Months = Dates.month.(time_data)
 custom_xticks = [1, 3, 6, 9, 12]
 p = []
@@ -312,15 +306,12 @@ p3 = scatter(
 plot(p1,p2, p3; size=(1000, 600), link=:both)
 ```
 
-```{julia}
-    pc = projection(PCA_model)[:, 1];
-```
-
 # Random Forest Model
 
 ```{julia}
-X_train_pca = convert(Array{Float32}, X_train_pca)
-X_test_pca = convert(Array{Float32}, X_test_pca)
+    y_train = [mean(skipmissing(precip_train[:, :, t])) for t in 1:size(precip_train, 3)]
+    mean_y_train = mean(skipmissing(y_train))
+    y_train_no_missing = coalesce.(y_train, mean_y_train)
 ```
 
 ```{julia}
@@ -335,52 +326,60 @@ X_test_pca = preprocess(temp_test, temp_train);
     test_embedded = predict(PCA_model, X_test_pca)
 ```
 
-## Model Training
+## Random Forest Model Training
 ```{julia}
-function train_random_forest(temp_train, temp_test, precip_train; n_pca::Int, n_trees)
-
-    # Assuming temp_train, precip_train, temp_test, precip_test are already defined
-
-    # Reshape the temperature data for PCA
-    X_train_pca = preprocess(temp_train, temp_train);
-    X_test_pca = preprocess(temp_test, temp_train);
-   
-   # Apply PCA transformation
+function train_random_forest(temp_train, temp_test, precip_train, precip_test; n_pca::Int, n_trees)
+    X_train_pca = preprocess(temp_train, temp_test)
+    X_test_pca = preprocess(temp_test, temp_train)
+    
     PCA_model = fit(PCA, X_train_pca, maxoutdim=n_pca)
 
-    y_train = [mean(dropmissing(precip_train[:, :, t])) for t in 1:size(precip_train, 3)]
-    y_train = Float32.(y_train)
+    y_train = [mean(skipmissing(precip_train[:, :, t])) for t in 1:size(precip_train, 3)]
 
     # Flatten to 2D arrays
     train_embedded = predict(PCA_model, X_train_pca)
     test_embedded = predict(PCA_model, X_test_pca)
 
+    
+    mean_y_train = mean(skipmissing(y_train))
+    y_train_no_missing = coalesce.(y_train, mean_y_train)
+
     # Train the Random Forest model
-    rf_model = DecisionTree.build_forest(y_train, X_train_pca, n_trees)
-
-    # Make predictions on the test set
-    y_pred = DecisionTree.apply_forest(rf_model, X_test_pca)
-
+    rf_model = DecisionTree.build_forest(
+        y_train_no_missing,
+        train_embedded[:, :, findall(!ismissing, y_train)],
+        n_trees
+    )
     return rf_model
 end
 ```
 
 ```{julia}
 RF_model = train_random_forest(temp_train, precip_train, temp_test, precip_test, 10, 100)
+
+precip_pred = DecisionTree.apply_forest(RF_model, test_embedded)
 ```
 
+# Quantile-Quantile Mapping: Bias Correction
+```{julia}
+   precip_pred = train_random_forest(temp_train, temp_test[:,:, 17:18], precip_train, precip_test; n_pca=4, n_trees=100)
+    y_pred = precip_pred[1]  # Assuming the model returns y_pred directly
 
+    y_actual = precip_test[:,:,1]
 
+    y_pred_corrected = reshape(y_pred, length(precip_lon)*length(precip_lat))
+    q = 0.5  # Use the desired quantile
+    quantile_pred = quantile(skipmissing(y_pred), q)
 
-
-
-
-
-
-
-
-
-
+    for i in 1:length(y_pred_corrected)
+        if !ismissing(y_pred_corrected[i])
+            point_quantile = searchsortedfirst(sort(y_pred_corrected), y_pred_corrected[i]) / length(y_pred_corrected)
+            quantile_actual = quantile(skipmissing(y_actual), point_quantile)
+            y_pred_corrected[i] = quantile_actual
+        end 
+    end
+    y_pred_corrected = reshape(y_pred_corrected, length(precip_lon), length(precip_lat))
+```
 
 
 # K-NN Model: Resampling Algorithm
