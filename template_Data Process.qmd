@@ -61,3 +61,32 @@ temp = reverse(temp, dims=2);
 ```{julia}
 # Performing a typical split ratio (roughly 70:30) for training and testing data collected from 1979 to 2021. With 42 years of data, the training dataset will encompass 30 years and the testing period will be 12 years (2009 to 2021)
 split = time[end] - Dates.Year(12)
+```
+
+
+```{julia}
+function train_random_forest(temp_train, temp_test::Any, precip_train::Any; n_pca::Int, n_trees::Int)
+    X_train = preprocess(temp_train, temp_train)
+    X_test = preprocess(temp_test, temp_train)
+    
+    PCA_model = fit(PCA, X_train, maxoutdim=n_pca)
+
+    y_train = precip_train_complete
+
+    # Flatten to 2D arrays
+    train_embedded = predict(PCA_model, X_train)
+    test_embedded = predict(PCA_model, X_test)
+
+    y_train_no_missing = precip_train_complete[.!ismissing.(precip_train_complete)]
+
+
+    # Train the Random Forest model
+    rf_model = DecisionTree.build_forest(
+        y_train_no_missing,
+        hcat(train_embedded[:, :, t] for t in 1:size(precip_train, 3)) |> Matrix,
+        n_trees
+    )
+    
+    return rf_model
+end
+```
