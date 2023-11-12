@@ -58,6 +58,7 @@ precip = ds_precip["precip"][:,:,:];
 ```{julia}
 precip = precip .* 1u"mm";
 ```
+
 ```{julia}
 precip_lat = reverse(precip_lat)
 precip = reverse(precip, dims=2);
@@ -326,8 +327,6 @@ X_test_pca = convert(Array{Float32}, X_test_pca)
 X_train_pca = preprocess(temp_train, temp_train);
 X_test_pca = preprocess(temp_test, temp_train);
 ```
-
-
 ```{julia}
     PCA_model = fit(PCA, X_train_pca)
 ```
@@ -346,14 +345,14 @@ X_test_pca = reshape(temp_test, 21 * 33, 3653)
 ```
 
 ```{julia}
-    precip_train = ustrip(u"mm", precip_train)
-    
-    precip_test = ustrip(u"mm", precip_test)
+y_train = convert(Array{Float32}, coalesce.(precip_train, 0.0))
+y_test = convert(Array{Float32}, coalesce.(precip_test, 0.0))
 ```
+
 
 ```{julia}
 # Reshape back to (lon, lat, time)
-function train_random_forest(temp_train, precip_train, temp_test, precip_test, n_components, n_trees)
+function train_random_forest(temp_train, temp_test, precip_train; n_pca::Int, n_trees)
 
     # Assuming temp_train, precip_train, temp_test, precip_test are already defined
 
@@ -362,15 +361,7 @@ function train_random_forest(temp_train, precip_train, temp_test, precip_test, n
     X_test_pca = preprocess(temp_test, temp_train);
    
    # Apply PCA transformation
-    PCA_model = fit(PCA, X_train_pca, maxoutdim=n_components)
-
-    # Reshape back to (lon, lat, time)
-    X_train_pca = convert(Array{Float32}, X_train_pca)
-    X_test_pca = convert(Array{Float32}, X_test_pca)
-
-    # Flatten precipitation data to use as target
-    y_train = convert(Array{Float32}, (precip_train)) 
-    y_test = convert(Array{Float32}, (precip_test)) 
+    PCA_model = fit(PCA, X_train_pca, maxoutdim=n_pca)
 
     # Flatten to 2D arrays
     train_embedded = predict(PCA_model, X_train_pca)
@@ -381,11 +372,6 @@ function train_random_forest(temp_train, precip_train, temp_test, precip_test, n
 
     # Make predictions on the test set
     y_pred = DecisionTree.apply_forest(rf_model, X_test_pca)
-
-    # Evaluate the model (example: using mean squared error)
-    mse = mean((y_test .- y_pred).^2)
-
-    println("Mean Squared Error on Test Set: ", mse)
 
     return rf_model
 end
