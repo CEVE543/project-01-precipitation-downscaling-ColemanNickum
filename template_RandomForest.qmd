@@ -316,7 +316,7 @@ plot(p1,p2, p3; size=(1000, 600), link=:both)
     pc = projection(PCA_model)[:, 1];
 ```
 
-# Random Forest
+# Random Forest Model
 
 ```{julia}
 X_train_pca = convert(Array{Float32}, X_train_pca)
@@ -330,20 +330,40 @@ X_test_pca = preprocess(temp_test, temp_train);
 ```{julia}
     PCA_model = fit(PCA, X_train_pca)
 ```
-
-```{julia}
-    y_train = [mean(skipmissing(precip_train[:, :, t])) for t in 1:size(precip_train, 3)]
-    y_test = [mean(skipmissing(precip_test[:, :, t])) for t in 1:size(precip_test, 3)]
-```
-```{julia}
-X_train_pca = reshape(temp_train, 21 * 33, 11688)
-X_test_pca = reshape(temp_test, 21 * 33, 3653)
-```
 ```{julia}
     train_embedded = predict(PCA_model, X_train_pca)
     test_embedded = predict(PCA_model, X_test_pca)
 ```
 
+## Model Training
+```{julia}
+function train_random_forest(temp_train, temp_test, precip_train; n_pca::Int, n_trees)
+
+    # Assuming temp_train, precip_train, temp_test, precip_test are already defined
+
+    # Reshape the temperature data for PCA
+    X_train_pca = preprocess(temp_train, temp_train);
+    X_test_pca = preprocess(temp_test, temp_train);
+   
+   # Apply PCA transformation
+    PCA_model = fit(PCA, X_train_pca, maxoutdim=n_pca)
+
+    y_train = [mean(dropmissing(precip_train[:, :, t])) for t in 1:size(precip_train, 3)]
+    y_train = Float32.(y_train)
+
+    # Flatten to 2D arrays
+    train_embedded = predict(PCA_model, X_train_pca)
+    test_embedded = predict(PCA_model, X_test_pca)
+
+    # Train the Random Forest model
+    rf_model = DecisionTree.build_forest(y_train, X_train_pca, n_trees)
+
+    # Make predictions on the test set
+    y_pred = DecisionTree.apply_forest(rf_model, X_test_pca)
+
+    return rf_model
+end
+```
 
 ```{julia}
 RF_model = train_random_forest(temp_train, precip_train, temp_test, precip_test, 10, 100)
@@ -363,7 +383,7 @@ RF_model = train_random_forest(temp_train, precip_train, temp_test, precip_test,
 
 
 
-# K-NN: Resampling Algorithm
+# K-NN Model: Resampling Algorithm
 ```{julia}
 function euclidean_distance(x::AbstractVector, y::AbstractVector)::AbstractFloat
     return sqrt(sum((x .- y) .^ 2))
