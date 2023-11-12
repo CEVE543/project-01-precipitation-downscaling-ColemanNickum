@@ -37,6 +37,8 @@ using StatsBase
 using Unitful
 using DataFrames
 using Statistics
+
+Plots.default(; margin=4Plots.mm, size=(700, 400), linewidth=2)
 ```
 
 
@@ -263,7 +265,7 @@ plot(p...; layout=(1, 4), size=(1800, 600))
 ```{julia}
 avg_precip =
     ustrip.(
-        u"mm", [mean(skipmissing(precip_train[:, :, t])) for t in 1:size(precip_train, 3)]
+        u"inch", [mean(skipmissing(precip_train[:, :, t])) for t in 1:size(precip_train, 3)]
     )
 avg_precip = replace(avg_precip, NaN => 0)
 
@@ -308,24 +310,20 @@ p3 = scatter(
 plot(p1,p2, p3; size=(1000, 600), link=:both)
 ```
 
-# Random Forest Model
 
-```{julia}
-    y_train = [mean(skipmissing(precip_train[:, :, t])) for t in 1:size(precip_train, 3)]
-    mean_y_train = mean(skipmissing(y_train))
-    y_train_no_missing = coalesce.(y_train, mean_y_train)
-```
-```{julia}
-X_train_pca = preprocess(temp_train, temp_train);
-X_test_pca = preprocess(temp_test, temp_train);
-```
-```{julia}
-    PCA_model = fit(PCA, X_train_pca)
-```
-```{julia}
-    train_embedded = predict(PCA_model, X_train_pca)
-    test_embedded = predict(PCA_model, X_test_pca)
-```
+
+
+
+
+
+
+
+
+
+
+
+
+# Random Forest Model
 
 ## Random Forest Model Training
 ```{julia}
@@ -334,38 +332,103 @@ precip_train_complete =
     ustrip.(
         u"mm", [mean(skipmissing(precip_train[:, :, t])) for t in 1:size(precip_train, 3)]
     )
- precip_train_complete = replace(precip_train_complete, NaN => 0)
-
-function train_random_forest(temp_train, temp_test::Any, precip_train::Any; n_pca::Int, n_trees::Int)
+ y_train = replace(precip_train_complete, NaN => 0)
+```
+```{julia}
+function train_random_forest(X_train, X_test; n_pca, n_trees, features)
+    
     X_train = preprocess(temp_train, temp_train)
     X_test = preprocess(temp_test, temp_train)
-    
-    PCA_model = fit(PCA, X_train, maxoutdim=n_pca)
 
-    y_train = precip_train_complete
+    # fit the PCA model to the training data
+    pca_model = fit(PCA, X_train; maxoutdim=n_pca)
 
-    # Flatten to 2D arrays
-    train_embedded = predict(PCA_model, X_train)
-    test_embedded = predict(PCA_model, X_test)
+    # project the test data onto the PCA basis
+    train_embedded = predict(pca_model, X_train)
+    test_embedded = predict(pca_model, X_test)
 
-    y_train_no_missing = precip_train_complete[.!ismissing.(precip_train_complete)]
+    train_embedded_flipped = train_embedded'
+    # Debugging: Print dimensions
+    println("Dimensions of flipped train_embedded: ", size(train_embedded_flipped))
+    println("Length of y_train: ", length(y_train))
 
+    # Debugging: Print indices causing the error
+    indices = [9844, 1595, 1726, 7383, 8760, 3466, 10835, 7879, 2095, 7449, 9030, 342, 2765, 8328, 8762, 3184, 4184, 6586, 3961, 8245]
+    println("Indices causing the error: ", indices)
+    println("Minimum index: ", minimum(indices))
+    println("Maximum index: ", maximum(indices))
 
-    # Train the Random Forest model
-    rf_model = DecisionTree.build_forest(
-        y_train_no_missing,
-        train_embedded[:, :, findall(!ismissing, y_train)],
-        n_trees
-    )
-    
+    # Check if indices are within bounds
+    if any(x -> x < 1 || x > size(train_embedded, 2), indices)
+        println("Error: Indices are out of bounds.")
+        return
+    end
+
+    # Access the matrix using the problematic indices
+    try
+        subset = train_embedded[:, indices]
+        println("Subset dimensions: ", size(subset))
+    catch e
+        println("Error accessing the matrix with indices: ", e)
+        println("Minimum index in the matrix: ", minimum(indices))
+        println("Maximum index in the matrix: ", maximum(indices))
+    end
+
+    # Check for missing values in y_train
+    println("Number of missing values in y_train: ", sum(ismissing, y_train))
+
+    #Problematic Indices
+    println("Problematic indices: ", indices)
+    println("Subset dimensions: ", size(train_embedded[:, indices]))
+    # Step 4: Build Random Forest
+    rf_model = DecisionTree.build_forest(y_train, train_embedded_flipped, n_trees, features)
+
     return rf_model
 end
 ```
 
 ```{julia}
-RF_model = train_random_forest(temp_train, temp_test, precip_train; n_pca=4, n_trees=100)
+
+function train_random_forest(temp_train, temp_test, precip_train; n_pca::Int, n_trees::Int)
+    X_train = preprocess(temp_train, temp_train)
+    X_test = preprocess(temp_test, temp_train)
+
+    # fit the PCA model to the training data
+    pca_model = fit(PCA, X_train; maxoutdim=n_pca)
+
+    # project the test data onto the PCA basis
+    train_embedded = predict(pca_model, X_train)
+    test_embedded = predict(pca_model, X_test)
+
+    # convert precip_train to a 1D array for use as labels
+    precip_labels = reshape(precip_train, :)
+
+    # build the random forest model
+    rf_model = DecisionTree.build_forest(precip_labels, train_embedded', n_trees)
+
+    # apply the learned model to the test data
+    precip_pred = DecisionTree.apply_forest(rf_model, test_embedded')
+
+    # reshape the predictions to match the original shape of precip_train
+    precip_pred = reshape(precip_pred, size(precip_train))
+
+    return precip_pred
+end
 
 ```
+
+```{julia}
+precip_pred = train_random_forest(temp_train, temp_test, precip_train; n_pca=4, n_trees=100)
+```
+
+
+
+
+
+
+
+
+
 
 # Quantile-Quantile Mapping: Bias Correction
 ```{julia}
@@ -387,6 +450,23 @@ RF_model = train_random_forest(temp_train, temp_test, precip_train; n_pca=4, n_t
     end
     y_pred_corrected = reshape(y_pred_corrected, length(precip_lon), length(precip_lat))
 ```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 # K-NN Model: Resampling Algorithm
