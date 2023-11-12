@@ -173,7 +173,7 @@ temp_testing_matrix = preprocess(temp_test, temp_train);
 ## Fitting
 ```{julia}
 #Fitting a PCA model to training period to automatically choose the number of principle components
-PCA_model = fit(PCA, temp_training_matrix; maxoutdim=4, pratio=0.999)
+PCA_model = fit(PCA, temp_training_matrix; maxoutdim=10, pratio=0.999)
 ```
 
 ## Plotting Variance Explained by PCs
@@ -237,7 +237,7 @@ pc_ts = predict(PCA_model, temp_training_matrix)
 Months = Dates.month.(time_data)
 custom_xticks = [1, 3, 6, 9, 12]
 p = []
-for i in 3:4
+for i in 1:4
     pi = scatter(
         Months,
         pc_ts[i, :];
@@ -303,7 +303,7 @@ p3 = scatter(
 plot(p1,p2, p3; size=(1000, 600), link=:both)
 ```
 
-# K-NN: Resampling Algorithm
+# KNN: Resampling Algorithm
 ```{julia}
 function euclidean_distance(x::AbstractVector, y::AbstractVector)::AbstractFloat
     return sqrt(sum((x .- y) .^ 2))
