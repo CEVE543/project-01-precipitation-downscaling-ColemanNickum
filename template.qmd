@@ -1,6 +1,6 @@
 ---
 title: "Project 1"
-subtitle: "Bias Correction: Quantile Quantile Mapping"
+subtitle: "Precipitation Downscaling"
 jupyter: julia-1.9
 date: 2023-11-13
 author: "Coleman Nickum (CN33)" 
@@ -133,7 +133,7 @@ time_data = Dates.Date.(temp_time)
 
 # Splitting Data: Training Period vs Testing Period
 ```{julia}
-# Performing a typical split ratio (roughly 70:30) for training and testing data collected from 1979 to 2021. With 42 years of data, the training dataset will encompass 30 years and the testing period will be 12 years (2009 to 2021)
+# Performing a typical split ratio (roughly 80:20) for training and testing data collected from 1979 to 2021. With 42 years of data, the training dataset will encompass 32 years and the testing period will be 10 years (2009 to 2021)
 split_idx = findfirst(time_data .== time_data[end] - Dates.Year(10))
 train_idx = 1:split_idx
 test_idx = (split_idx+1):length(time_data);
@@ -455,93 +455,6 @@ p = map(eachindex(t_sample)) do ti
     )
     plot(p1, p2; layout=(2, 1), size=(1000, 400))
 end
-plot(p...; layout=(2, 3), size=(1400, 1200))
-```
-
-
-# SVM
-```{julia}
-
-function predict_svm(temp_train, temp_test, precip_train; n_pca::Int)
-    X_train = preprocess(temp_train, temp_train)
-    X_test = preprocess(temp_test, temp_train)
-
-    # fit the PCA model to the training data
-    pca_model = fit(PCA, X_train; maxoutdim=n_pca)
-
-    # project the test data onto the PCA basis
-    train_embedded = predict(pca_model, X_train)
-    test_embedded = predict(pca_model, X_test)
-
-    # flatten precipitation train data
-    # precip_labels = vec(precip_train)
-
-    # Call the LIBSVM svmtrain function
-    model = svmtrain(Matrix(train_embedded), Vector(y_train))
-    
-    # Predict using the SVM model
-    precip_pred = svmpredict(model, Matrix(test_embedded))
-    
-    # Reshape the prediction back to the original shape
-   #precip_pred = reshape(y_pred, size(temp_test, 1), size(temp_test, 2), :)
-    
-    return precip_pred
-end
-```
-
-
-```{julia}
-
-# Call the predict_svm function
-t_sample = rand(1:size(temp_test, 3), 3)
-precip_pred = predict_svm(temp_train, temp_test[:, :, t_sample], precip_train; n_pca=4)
-
-p = map(eachindex(t_sample)) do ti
-    t = t_sample[ti]
-    y_pred = precip_pred[ti]'
-    y_actual = precip_test[:, :, t]'
-    #Check if the data already has millimeter units
-    if Unitful.unit(y_pred) !== u"mm"
-        y_pred = uconvert(u"mm", y_pred)
-    end
-    if Unitful.unit(y_actual) !== u"mm"
-        y_actual = uconvert(u"mm", y_actual)
-    end
-    
-    cmax = max(
-        maximum(skipmissing(y_pred)),
-        maximum(skipmissing(y_actual))
-    )
-    cmax = ustrip(u"mm", cmax)
-
-    p1 = heatmap(
-        precip_lon,
-        precip_lat,
-        y_pred;
-        xlabel="Longitude",
-        ylabel="Latitude",
-        title="Predicted",
-        aspect_ratio=:equal,
-        clims=(0, cmax)
-    )
-    p2 = heatmap(
-        precip_lon,
-        precip_lat,
-        y_actual;
-        xlabel="Longitude",
-        ylabel="Latitude",
-        title="Actual",
-        aspect_ratio=:equal,
-        clims=(0, cmax)
-    )
-    #plot(p1, p2; layout=(2, 1), size=(1000, 400))
-    return p1, p2
-end
-
-# Collect the plots into an array
-plots = collect(p)
-
-# Plot the array of plots
 plot(p...; layout=(2, 3), size=(1400, 1200))
 ```
 
