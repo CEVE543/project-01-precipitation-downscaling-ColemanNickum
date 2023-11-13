@@ -1,24 +1,17 @@
 ```{julia}
-"""
-KNN resampling algorithm
-
-temp_train: the training temperature data. This should be the raw field, not the prinipal components. Inside the function, convert to principal components using `n_pca` principal components. 
-temp_test: the temperature data to predict. This should be the raw field, not the prinipal components. Inside the function, convert to principal components using `n_pca` principal components.
-precip_train: the training precipitation data.
-"""
-# Function to evaluate KNN predictions
-# function evaluate_knn(predictions, true_values)
-#     # Assuming predictions and true_values have the same dimensions
+Function to evaluate KNN predictions
+function evaluate_knn(predictions, true_values)
+    # Assuming predictions and true_values have the same dimensions
     
-#     # Convert predictions to the same type as true_values for comparison
-#     predictions = convert.(eltype(true_values), predictions)
+    # Convert predictions to the same type as true_values for comparison
+    predictions = convert.(eltype(true_values), predictions)
     
-#     # Calculate accuracy
-#     num_samples = size(predictions, 3)
-#     accuracy = sum(predictions .== true_values) / num_samples
+    # Calculate accuracy
+    num_samples = size(predictions, 3)
+    accuracy = sum(predictions .== true_values) / num_samples
     
-#     return accuracy
-# end
+    return accuracy
+end
 
 function predict_knn(temp_train, temp_test, precip_train; n_pca::Int)
     X_train = preprocess(temp_train, temp_train)
@@ -30,12 +23,6 @@ function predict_knn(temp_train, temp_test, precip_train; n_pca::Int)
     # project the test data onto the PCA basis
     train_embedded = predict(pca_model, X_train)
     test_embedded = predict(pca_model, X_test)
-
-    # use the `knn` function for each point in the test data
-    # precip_pred = map(1:size(X_test, 2)) do i
-    #     idx, _ = knn(train_embedded', test_embedded[:, i], 3)
-    #     precip_train[:, :, idx]
-    # end
 
     precip_pred = map(1:size(X_test, 2)) do i
         _, dist = knn(train_embedded', test_embedded[:, i], 3)
