@@ -203,7 +203,6 @@ plot(p1, p2; layout=(1, 2), size=(900, 400))
 ```
 
 :::{.callout-note}
-------------------------------------------------------------------
 I chose to select 4 principle components because, after plotting the variance explained, the 4 principle components accounted for a cumulative variance of 0.95 and retains enough information while also reducing the noise of outiers.
 :::
 ```{julia}
@@ -334,6 +333,15 @@ temp_train: the training temperature data. This should be the raw field, not the
 temp_test: the temperature data to predict. This should be the raw field, not the prinipal components. Inside the function, convert to principal components using `n_pca` principal components.
 precip_train: the training precipitation data.
 """
+# Function to evaluate KNN predictions
+function evaluate_knn(predictions, true_values)
+    # Implement your evaluation metric here (e.g., accuracy)
+    # For example, using accuracy as the evaluation metric
+    num_samples = size(predictions, 3)
+    accuracy = sum(predictions .== true_values) / num_samples
+    return accuracy
+end
+
 function predict_knn(temp_train, temp_test, precip_train; n_pca::Int)
     X_train = preprocess(temp_train, temp_train)
     X_test = preprocess(temp_test, temp_train)
@@ -350,9 +358,12 @@ function predict_knn(temp_train, temp_test, precip_train; n_pca::Int)
         idx, _ = knn(train_embedded', test_embedded[:, i], 3)
         precip_train[:, :, idx]
     end
+    
+    accuracy = evaluate_knn(precip_pred, precip_train)
 
-    # return a matrix of predictions
-    return precip_pred
+        # return a matrix of predictions and the evaluation metric
+    return precip_pred, accuracy
+
 end
 
 ```
