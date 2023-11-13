@@ -399,7 +399,7 @@ function knn_quantile_mapping(temp_train, temp_test, precip_train, precip_test; 
     # Reshape y_pred for quantile mapping
     y_pred_corrected = reshape(y_pred, length(precip_lon)*length(precip_lat))
 
-    # Quantile mapping
+    # Quantile Quantile mapping
     q = 0.5  
     quantile_pred = quantile(skipmissing(y_pred), q)
 
