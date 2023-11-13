@@ -1,92 +1,105 @@
 ```{julia}
-#| output: false
-using Dates
-using MultivariateStats
-using Plots
-using NCDatasets
-using StatsBase
-using Unitful
-using DataFrames
-using Statistics
+"""
+KNN resampling algorithm
 
-Plots.default(; margin=4Plots.mm, size=(700, 400), linewidth=2)
-```
+temp_train: the training temperature data. This should be the raw field, not the prinipal components. Inside the function, convert to principal components using `n_pca` principal components. 
+temp_test: the temperature data to predict. This should be the raw field, not the prinipal components. Inside the function, convert to principal components using `n_pca` principal components.
+precip_train: the training precipitation data.
+"""
+# Function to evaluate KNN predictions
+# function evaluate_knn(predictions, true_values)
+#     # Assuming predictions and true_values have the same dimensions
+    
+#     # Convert predictions to the same type as true_values for comparison
+#     predictions = convert.(eltype(true_values), predictions)
+    
+#     # Calculate accuracy
+#     num_samples = size(predictions, 3)
+#     accuracy = sum(predictions .== true_values) / num_samples
+    
+#     return accuracy
+# end
 
-## Precipitation Data: ERA5 Reanalysis Dataset 
-```{julia}
-# Dataset covers daily precipitation (mm) from 1/1/1979 to 12/31/2020
-ds_precip = NCDataset("/Users/coleman/Documents/GitHub/project-01-precipitation-downscaling-ColemanNickum/data/raw/precip.nc")
-println(ds_precip)
-```
-```{julia}
-precip_time = ds_precip["time"][:];
-precip_lon = ds_precip["lon"][:];
-precip_lat = ds_precip["lat"][:];
-precip = ds_precip["precip"][:,:,:];
-```
-```{julia}
-precip = precip .* 0.0393701 * u"inch";
-```
-```{julia}
-precip_lat = reverse(precip_lat)
-precip = reverse(precip, dims=2);
-```
-```{julia}
-close(ds_precip)
-```
-
-## Temperature Data: ERA5 Reanalysis Dataset 
-```{julia}
-# Dataset covers daily temperature (Kelvin) from 1/1/1979 to 12/31/2020
-ds_temp = NCDataset("/Users/coleman/Documents/GitHub/project-01-precipitation-downscaling-ColemanNickum/data/raw/temp.nc")
-println(ds_temp)
-```
-```{julia}
-temp_time = ds_temp["time"][:];
-temp_lon = ds_temp["longitude"][:];
-temp_lat = ds_temp["latitude"][:];
-temp = ds_temp["t2m"][:,:,:];
-```
-```{julia}
-temp_lat = reverse(temp_lat)
-temp = reverse(temp, dims=2);
-```
-
-# Ensure that temperature and precipitation correspond to the same time period
-```{julia}
-@assert temp_time == precip_time
-```
-
-## Splitting Data: Training Period vs Testing Period
-```{julia}
-# Performing a typical split ratio (roughly 70:30) for training and testing data collected from 1979 to 2021. With 42 years of data, the training dataset will encompass 30 years and the testing period will be 12 years (2009 to 2021)
-split = time[end] - Dates.Year(12)
-```
-
-
-```{julia}
-function train_random_forest(temp_train, temp_test::Any, precip_train::Any; n_pca::Int, n_trees::Int)
+function predict_knn(temp_train, temp_test, precip_train; n_pca::Int)
     X_train = preprocess(temp_train, temp_train)
     X_test = preprocess(temp_test, temp_train)
+
+    # fit the PCA model to the training data
+    pca_model = fit(PCA, X_train; maxoutdim=n_pca)
+
+    # project the test data onto the PCA basis
+    train_embedded = predict(pca_model, X_train)
+    test_embedded = predict(pca_model, X_test)
+
+    # use the `knn` function for each point in the test data
+    # precip_pred = map(1:size(X_test, 2)) do i
+    #     idx, _ = knn(train_embedded', test_embedded[:, i], 3)
+    #     precip_train[:, :, idx]
+    # end
+
+    precip_pred = map(1:size(X_test, 2)) do i
+        _, dist = knn(train_embedded', test_embedded[:, i], 3)
+        # Extract precipitation values from the nearest neighbors
+        precip_values = precip_train[:, :, dist]
+    end
+
     
-    PCA_model = fit(PCA, X_train, maxoutdim=n_pca)
+    # calculate the mean absolute error (MAE) between predicted and actual precipitation
+    precip_actual = precip_test
+    mae = sum(abs(precip_pred .- precip_actual)) / length(precip_actual)
 
-    y_train = precip_train_complete
+    # return a matrix of predictions and MAE
+    return precip_pred, mae
 
-    # Flatten to 2D arrays
-    train_embedded = predict(PCA_model, X_train)
-    test_embedded = predict(PCA_model, X_test)
-
-    y_train_no_missing = precip_train_complete[.!ismissing.(precip_train_complete)]
-
-
-    # Train the Random Forest model
-    rf_model = DecisionTree.build_forest(
-        y_train_no_missing,
-        hcat(train_embedded[:, :, t] for t in 1:size(precip_train, 3)) |> Matrix,
-        n_trees
-    )
-    
-    return rf_model
 end
+
+```
+
+```{julia}
+# Assuming you have your data: temp_train, temp_test, precip_train
+n_pca = 4  # Replace with your desired number of principal components
+
+# Call the function to get both precipitation predictions and accuracy
+t_sample = rand(1:size(temp_test, 3), 4)
+precip_pred, mae = predict_knn(temp_train, temp_test[:, :, t_sample], precip_train; n_pca=4)
+
+# If you only want the accuracy, you can ignore the precipitation predictions
+println("mae: ", mae)
+```
+
+## Predicted vs. Actual Values
+```{julia}
+t_sample = rand(1:size(temp_test, 3), 4)
+precip_pred = predict_knn(temp_train, temp_test[:, :, t_sample], precip_train; n_pca=4)
+
+p = map(eachindex(t_sample)) do ti
+    t = t_sample[ti]
+    y_pred = precip_pred[ti]'
+    y_actual = precip_test[:, :, t]'
+    cmax = max(maximum(skipmissing(y_pred)), maximum(skipmissing(y_actual)))
+    cmax = ustrip(u"mm", cmax)
+
+    p1 = heatmap(
+        precip_lon,
+        precip_lat,
+        y_pred;
+        xlabel="Longitude",
+        ylabel="Latitude",
+        title="Predicted",
+        aspect_ratio=:equal,
+        clims=(0, cmax)
+    )
+    p2 = heatmap(
+        precip_lon,
+        precip_lat,
+        y_actual;
+        xlabel="Longitude",
+        ylabel="Latitude",
+        title="Actual",
+        aspect_ratio=:equal,
+        clims=(0, cmax)
+    )
+    plot(p1, p2; layout=(2, 1), size=(1000, 400))
+end
+plot(p...; layout=(2, 3), size=(1400, 1200))
 ```
