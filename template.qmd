@@ -34,7 +34,6 @@ using StatsBase
 using Unitful
 using DataFrames
 using Statistics
-using LIBSVM
 Plots.default(; margin=4Plots.mm, size=(700, 400), linewidth=2)
 ```
 
@@ -326,44 +325,26 @@ end
 
 ## Combining KNN and PCA
 ```{julia}
-"""
-KNN resampling algorithm
-
-temp_train: the training temperature data. This should be the raw field, not the prinipal components. Inside the function, convert to principal components using `n_pca` principal components. 
-temp_test: the temperature data to predict. This should be the raw field, not the prinipal components. Inside the function, convert to principal components using `n_pca` principal components.
-precip_train: the training precipitation data.
-"""
-# Function to evaluate KNN predictions
-function evaluate_knn(predictions, true_values)
-    # Implement your evaluation metric here (e.g., accuracy)
-    # For example, using accuracy as the evaluation metric
-    num_samples = size(predictions, 3)
-    accuracy = sum(predictions .== true_values) / num_samples
-    return accuracy
-end
 
 function predict_knn(temp_train, temp_test, precip_train; n_pca::Int)
     X_train = preprocess(temp_train, temp_train)
     X_test = preprocess(temp_test, temp_train)
 
-    # fit the PCA model to the training data
+    # fitting the PCA model to the training temperature data
     pca_model = fit(PCA, X_train; maxoutdim=n_pca)
 
     # project the test data onto the PCA basis
     train_embedded = predict(pca_model, X_train)
     test_embedded = predict(pca_model, X_test)
 
-    # use the `knn` function for each point in the test data
+    #use the `knn` function for each point in the test data
     precip_pred = map(1:size(X_test, 2)) do i
         idx, _ = knn(train_embedded', test_embedded[:, i], 3)
         precip_train[:, :, idx]
     end
-    
-    accuracy = evaluate_knn(precip_pred, precip_train)
 
-        # return a matrix of predictions and the evaluation metric
-    return precip_pred, accuracy
-
+    # return a matrix of predictions (precip_pred)
+    return precip_pred
 end
 
 ```
@@ -410,7 +391,7 @@ plot(p...; layout=(2, 3), size=(1400, 1200))
 function knn_quantile_mapping(temp_train, temp_test, precip_train, precip_test; n_pca::Int, n_trees::Int)
     # KNN prediction
     precip_pred = predict_knn(temp_train, temp_test, precip_train, n_pca=n_pca)
-    y_pred = precip_pred[1]  # Assuming the model returns y_pred directly
+    y_pred = precip_pred[1]  # Assumes the model returns y_pred directly
 
     # Actual precipitation values
     y_actual = precip_test[:,:,1]
@@ -419,15 +400,15 @@ function knn_quantile_mapping(temp_train, temp_test, precip_train, precip_test; 
     y_pred_corrected = reshape(y_pred, length(precip_lon)*length(precip_lat))
 
     # Quantile mapping
-    q = 0.5  # Use the desired quantile
+    q = 0.5  
     quantile_pred = quantile(skipmissing(y_pred), q)
 
     for i in 1:length(y_pred_corrected)
         if !ismissing(y_pred_corrected[i])
-            # Calculate the quantile of the predicted value in the predicted distribution
+            # Calculates the quantile of the predicted value in the predicted distribution
             point_quantile = searchsortedfirst(sort(y_pred_corrected), y_pred_corrected[i]) / length(y_pred_corrected)
 
-            # Find the quantile of the actual value in the observed distribution
+            # Identifies the quantile of the actual value in the observed distribution
             quantile_actual = quantile(skipmissing(y_actual), point_quantile)
 
             # Adjust the predicted value using quantile mapping
@@ -480,11 +461,7 @@ plot(p...; layout=(2, 3), size=(1400, 1200))
 
 # SVM
 ```{julia}
-"""
-temp_train: the training temperature data. This should be the raw field, not the principal components.
-temp_test: the temperature data to predict. This should be the raw field, not the principal components.
-precip_train: the training precipitation data.
-"""
+
 function predict_svm(temp_train, temp_test, precip_train; n_pca::Int)
     X_train = preprocess(temp_train, temp_train)
     X_test = preprocess(temp_test, temp_train)
