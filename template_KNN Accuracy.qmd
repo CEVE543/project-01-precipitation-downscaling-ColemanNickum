@@ -1,0 +1,92 @@
+```{julia}
+#| output: false
+using Dates
+using MultivariateStats
+using Plots
+using NCDatasets
+using StatsBase
+using Unitful
+using DataFrames
+using Statistics
+
+Plots.default(; margin=4Plots.mm, size=(700, 400), linewidth=2)
+```
+
+## Precipitation Data: ERA5 Reanalysis Dataset 
+```{julia}
+# Dataset covers daily precipitation (mm) from 1/1/1979 to 12/31/2020
+ds_precip = NCDataset("/Users/coleman/Documents/GitHub/project-01-precipitation-downscaling-ColemanNickum/data/raw/precip.nc")
+println(ds_precip)
+```
+```{julia}
+precip_time = ds_precip["time"][:];
+precip_lon = ds_precip["lon"][:];
+precip_lat = ds_precip["lat"][:];
+precip = ds_precip["precip"][:,:,:];
+```
+```{julia}
+precip = precip .* 0.0393701 * u"inch";
+```
+```{julia}
+precip_lat = reverse(precip_lat)
+precip = reverse(precip, dims=2);
+```
+```{julia}
+close(ds_precip)
+```
+
+## Temperature Data: ERA5 Reanalysis Dataset 
+```{julia}
+# Dataset covers daily temperature (Kelvin) from 1/1/1979 to 12/31/2020
+ds_temp = NCDataset("/Users/coleman/Documents/GitHub/project-01-precipitation-downscaling-ColemanNickum/data/raw/temp.nc")
+println(ds_temp)
+```
+```{julia}
+temp_time = ds_temp["time"][:];
+temp_lon = ds_temp["longitude"][:];
+temp_lat = ds_temp["latitude"][:];
+temp = ds_temp["t2m"][:,:,:];
+```
+```{julia}
+temp_lat = reverse(temp_lat)
+temp = reverse(temp, dims=2);
+```
+
+# Ensure that temperature and precipitation correspond to the same time period
+```{julia}
+@assert temp_time == precip_time
+```
+
+## Splitting Data: Training Period vs Testing Period
+```{julia}
+# Performing a typical split ratio (roughly 70:30) for training and testing data collected from 1979 to 2021. With 42 years of data, the training dataset will encompass 30 years and the testing period will be 12 years (2009 to 2021)
+split = time[end] - Dates.Year(12)
+```
+
+
+```{julia}
+function train_random_forest(temp_train, temp_test::Any, precip_train::Any; n_pca::Int, n_trees::Int)
+    X_train = preprocess(temp_train, temp_train)
+    X_test = preprocess(temp_test, temp_train)
+    
+    PCA_model = fit(PCA, X_train, maxoutdim=n_pca)
+
+    y_train = precip_train_complete
+
+    # Flatten to 2D arrays
+    train_embedded = predict(PCA_model, X_train)
+    test_embedded = predict(PCA_model, X_test)
+
+    y_train_no_missing = precip_train_complete[.!ismissing.(precip_train_complete)]
+
+
+    # Train the Random Forest model
+    rf_model = DecisionTree.build_forest(
+        y_train_no_missing,
+        hcat(train_embedded[:, :, t] for t in 1:size(precip_train, 3)) |> Matrix,
+        n_trees
+    )
+    
+    return rf_model
+end
+```
