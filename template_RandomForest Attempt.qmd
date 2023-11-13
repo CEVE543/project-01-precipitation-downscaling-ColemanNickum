@@ -1,0 +1,562 @@
+---
+title: "Project 1"
+subtitle: "Precipitation Downscaling"
+jupyter: julia-1.9
+date: 2023-11-13
+author: "Coleman Nickum (CN33)" 
+
+number-sections: true
+code-annotations: hover
+
+kind: "Project"
+Module: "2"
+categories:
+    - "Module 2"
+    - "Project"
+
+format:
+    html: 
+        toc-depth: 3
+    docx: 
+        toc: true
+        toc-depth: 3
+        fig-format: png
+---
+# Setup
+```{julia}
+import DecisionTree
+import Random
+```
+```{julia}
+#| output: false
+using Dates
+using MultivariateStats
+using Plots
+using NCDatasets
+using StatsBase
+using Unitful
+using DataFrames
+using Statistics
+
+Plots.default(; margin=4Plots.mm, size=(700, 400), linewidth=2)
+```
+
+
+# Precipitation Data: ERA5 Reanalysis Dataset 
+```{julia}
+# Dataset covers daily precipitation (mm) from 1/1/1979 to 12/31/2020
+ds_precip = NCDataset("/Users/coleman/Documents/GitHub/project-01-precipitation-downscaling-ColemanNickum/data/raw/precip.nc")
+println(ds_precip)
+```
+
+```{julia}
+precip_time = ds_precip["time"][:];
+precip_lon = ds_precip["lon"][:];
+precip_lat = ds_precip["lat"][:];
+precip = ds_precip["precip"][:,:,:];
+```
+```{julia}
+precip = precip .* 1u"mm";
+```
+
+```{julia}
+precip_lat = reverse(precip_lat)
+precip = reverse(precip, dims=2);
+```
+
+## Precipitation Heatmap: Past vs Present
+```{julia}
+h1 = heatmap(
+    precip_lon,
+    precip_lat,
+    precip[:, :, 1]';
+    xlabel="Longitude",
+    ylabel="Latitude",
+    title="Precipitation on 1/1/1979"
+)
+
+h2 = heatmap(
+    precip_lon,
+    precip_lat,
+    precip[:, :, end]';
+    xlabel="Longitude",
+    ylabel="Latitude",
+    title="Precipitation on 12/31/2020"
+)
+plot(h1, h2; layout=(1, 2), size=(900, 400))
+```
+
+```{julia}
+close(ds_precip)
+```
+
+# Temperature Data: ERA5 Reanalysis Dataset 
+```{julia}
+# Dataset covers daily temperature (Kelvin) from 1/1/1979 to 12/31/2020
+ds_temp = NCDataset("/Users/coleman/Documents/GitHub/project-01-precipitation-downscaling-ColemanNickum/data/raw/temp.nc")
+println(ds_temp)
+```
+```{julia}
+temp_time = ds_temp["time"][:];
+temp_lon = ds_temp["longitude"][:];
+temp_lat = ds_temp["latitude"][:];
+temp = ds_temp["t2m"][:,:,:];
+```
+```{julia}
+temp_lat = reverse(temp_lat)
+temp = reverse(temp, dims=2);
+```
+
+## Temperature Heatmap: Past vs Present
+```{julia}
+h1 = heatmap(
+    temp_lon,
+    temp_lat,
+    temp[:, :, 1]';
+    xlabel="Longitude",
+    ylabel="Latitude",
+    title="Temperature on 1/1/1979"
+)
+
+h2 = heatmap(
+    temp_lon,
+    temp_lat,
+    temp[:, :, end]';
+    xlabel="Longitude",
+    ylabel="Latitude",
+    title="Temperature on 12/31/2020"
+)
+plot(h1, h2; layout=(1, 2), size=(900, 400))
+```
+
+```{julia}
+close(ds_temp)
+```
+
+## Ensuring temperature and precipitation correspond to the same time period
+```{julia}
+@assert temp_time == precip_time
+```
+```{julia}
+time_data = Dates.Date.(temp_time)
+```
+
+# Splitting Data: Training Period vs Testing Period
+```{julia}
+# Performing a typical split ratio (roughly 70:30) for training and testing data collected from 1979 to 2021. With 42 years of data, the training dataset will encompass 30 years and the testing period will be 10 years (2010 to 2021)
+split_idx = findfirst(time_data .== time_data[end] - Dates.Year(10))
+train_idx = 1:split_idx
+test_idx = (split_idx+1):length(time_data);
+```
+
+## Testing and Training Period Variables
+```{julia}
+precip_train = precip[:, :, train_idx];
+precip_test = precip[:, :, test_idx];
+temp_train = temp[:, :, train_idx];
+temp_test = temp[:, :, test_idx];
+```
+
+# Preprocessing Data: Climatology and Mean Centering
+```{julia}
+function preprocess(temp::Array{T, 3}, temp_reference::Array{T, 3})::AbstractMatrix where T
+#Computing anomalies that removes climatology from our matrix to allow greater clarity of temperature variations by removing the influence of climate patterns
+climatology = mean(temp_reference, dims=3)
+anomalies = temp .- climatology
+
+#Reshaping our temperature dataset to produce a 2D matrix of time (rows) and locations (columns): 
+temp_mat = reshape(anomalies, size(temp, 1) * size(temp, 2), size(temp, 3))
+    return temp_mat
+end
+```
+
+## Apply to Training and Testing Datasets
+```{julia}
+#Preprocessing temp_train and temp_test; both are preprocessed to the temp training data so they both use the same climatology
+n_lon, n_lat, n_t = size(temp)
+temp_training_matrix = preprocess(temp_train, temp_train);
+temp_testing_matrix = preprocess(temp_test, temp_train);
+```
+
+# Principle Component Analysis
+## Fitting
+```{julia}
+#Fitting a PCA model to training period to automatically choose the number of principle components
+PCA_model = fit(PCA, temp_training_matrix; maxoutdim=10, pratio=0.999);
+```
+
+
+## Plotting Variance Explained by PCs
+```{julia}
+# Variables for plotting the variance accounted by the principle components 
+variance_explained = principalvars(PCA_model)
+total_var = var(PCA_model)
+cumulative_var = cumsum(variance_explained)./total_var
+```
+
+```{julia}
+p1 = plot(
+    variance_explained / total_var;
+    xlabel="Number of PCs",
+    ylabel="Fraction of Variance Explained",
+    label=false,
+    title="Variance Explained"
+)
+p2 = plot(
+    cumulative_var;
+    xlabel="Number of PCs",
+    ylabel="Fraction of Variance Explained",
+    label=false,
+    title="Cumulative Variance Explained"
+)
+plot(p1, p2; layout=(1, 2), size=(900, 400))
+```
+
+:::{.callout-note}
+------------------------------------------------------------------
+I chose to select 4 principle components because, after plotting the cumulative variance explained, the 4 principle components accounted for a cumulative variance of 0.95 and retains enough information while also reducing the noise of outiers.
+:::
+
+## Plotting Spatial Patterns
+```{julia}
+p = [] 
+for i in 1:4
+    pc = projection(PCA_model)[:, i]
+    pc_reshaped = reshape(pc, n_lon, n_lat)'
+    pi = heatmap(
+        temp_lon,
+        temp_lat,
+        pc_reshaped;
+        xlabel="Longitude",
+        ylabel="Latitude",
+        title="PC $i",
+        aspect_ratio=:equal,
+        cmap=:PuOr
+    )
+    push!(p, pi)
+end
+plot(p...; layout=(1, 4), size=(1500, 600))
+```
+
+## Plotting Time Series
+```{julia}
+pc_ts = predict(PCA_model, temp_training_matrix)
+Months = Dates.month.(time_data)
+custom_xticks = [1, 3, 6, 9, 12]
+p = []
+for i in 1:4
+    pi = scatter(
+        Months,
+        pc_ts[i, :];
+        xlabel="Months in Year",
+        ylabel="PC $i",
+        title="PC $i",
+        label=false,
+        alpha=0.3,
+        color=:blue,
+        xticks=(custom_xticks, custom_xticks)
+    )
+    push!(p, pi)
+end
+plot(p...; layout=(1, 4), size=(1800, 600))
+```
+
+# Scatter Plots: Comparison of Influence on Rainfall
+```{julia}
+avg_precip =
+    ustrip.(
+        u"inch", [mean(skipmissing(precip_train[:, :, t])) for t in 1:size(precip_train, 3)]
+    )
+avg_precip = replace(avg_precip, NaN => 0)
+
+p1_idx = findall(avg_precip .> quantile(avg_precip, 0.98))
+p1 = scatter(
+    pc_ts[2, p1_idx],
+    pc_ts[3, p1_idx];
+    zcolor=avg_precip[p1_idx],
+    xlabel="PC 2",
+    ylabel="PC 3",
+    markersize=5,
+    clims=(0, 2.75),
+    title="Rainy Days",
+    label=false
+)
+
+p2_idx = findall(avg_precip .> quantile(avg_precip, 0.98))
+p2 = scatter(
+    pc_ts[4, p2_idx],
+    pc_ts[3, p2_idx];
+    zcolor=avg_precip[p2_idx],
+    xlabel="PC 4",
+    ylabel="PC 3",
+    markersize=5,
+    clims=(0, 2.75),
+    title="Rainy Days",
+    label=false
+)
+
+p3_idx = findall(avg_precip .> quantile(avg_precip, 0.98))
+p3 = scatter(
+    pc_ts[4, p3_idx],
+    pc_ts[2, p3_idx];
+    zcolor=avg_precip[p3_idx],
+    xlabel="PC 4",
+    ylabel="PC 2",
+    markersize=5,
+    clims=(0, 2.75),
+    title="Rainy Days",
+    label=false
+)
+plot(p1,p2, p3; size=(1000, 600), link=:both)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Random Forest Model
+
+## Random Forest Model Training
+```{julia}
+
+precip_train_complete =
+    ustrip.(
+        u"mm", [mean(skipmissing(precip_train[:, :, t])) for t in 1:size(precip_train, 3)]
+    )
+ y_train = replace(precip_train_complete, NaN => 0)
+```
+```{julia}
+function train_random_forest(X_train, X_test; n_pca, n_trees, features)
+    
+    X_train = preprocess(temp_train, temp_train)
+    X_test = preprocess(temp_test, temp_train)
+
+    # fit the PCA model to the training data
+    pca_model = fit(PCA, X_train; maxoutdim=n_pca)
+
+    # project the test data onto the PCA basis
+    train_embedded = predict(pca_model, X_train)
+    test_embedded = predict(pca_model, X_test)
+
+    train_embedded_flipped = train_embedded'
+    # Debugging: Print dimensions
+    println("Dimensions of flipped train_embedded: ", size(train_embedded_flipped))
+    println("Length of y_train: ", length(y_train))
+
+    # Debugging: Print indices causing the error
+    indices = [9844, 1595, 1726, 7383, 8760, 3466, 10835, 7879, 2095, 7449, 9030, 342, 2765, 8328, 8762, 3184, 4184, 6586, 3961, 8245]
+    println("Indices causing the error: ", indices)
+    println("Minimum index: ", minimum(indices))
+    println("Maximum index: ", maximum(indices))
+
+    # Check if indices are within bounds
+    if any(x -> x < 1 || x > size(train_embedded, 2), indices)
+        println("Error: Indices are out of bounds.")
+        return
+    end
+
+    # Access the matrix using the problematic indices
+    try
+        subset = train_embedded[:, indices]
+        println("Subset dimensions: ", size(subset))
+    catch e
+        println("Error accessing the matrix with indices: ", e)
+        println("Minimum index in the matrix: ", minimum(indices))
+        println("Maximum index in the matrix: ", maximum(indices))
+    end
+
+    # Check for missing values in y_train
+    println("Number of missing values in y_train: ", sum(ismissing, y_train))
+
+    #Problematic Indices
+    println("Problematic indices: ", indices)
+    println("Subset dimensions: ", size(train_embedded[:, indices]))
+    # Step 4: Build Random Forest
+    rf_model = DecisionTree.build_forest(y_train, train_embedded_flipped, n_trees, features)
+
+    return rf_model
+end
+```
+
+```{julia}
+
+function train_random_forest(temp_train, temp_test, precip_train; n_pca::Int, n_trees::Int)
+    X_train = preprocess(temp_train, temp_train)
+    X_test = preprocess(temp_test, temp_train)
+
+    # fit the PCA model to the training data
+    pca_model = fit(PCA, X_train; maxoutdim=n_pca)
+
+    # project the test data onto the PCA basis
+    train_embedded = predict(pca_model, X_train)
+    test_embedded = predict(pca_model, X_test)
+
+    # convert precip_train to a 1D array for use as labels
+    precip_labels = reshape(precip_train, :)
+
+    # build the random forest model
+    rf_model = DecisionTree.build_forest(precip_labels, train_embedded', n_trees)
+
+    # apply the learned model to the test data
+    precip_pred = DecisionTree.apply_forest(rf_model, test_embedded')
+
+    # reshape the predictions to match the original shape of precip_train
+    precip_pred = reshape(precip_pred, size(precip_train))
+
+    return precip_pred
+end
+
+```
+
+```{julia}
+precip_pred = train_random_forest(temp_train, temp_test, precip_train; n_pca=4, n_trees=100)
+```
+
+
+
+
+
+
+
+
+
+
+# Quantile-Quantile Mapping: Bias Correction
+```{julia}
+   precip_pred = train_random_forest(temp_train, temp_test[:,:, 17:18], precip_train, precip_test; n_pca=4, n_trees=100)
+    y_pred = precip_pred[1]  # Assuming the model returns y_pred directly
+
+    y_actual = precip_test[:,:,1]
+
+    y_pred_corrected = reshape(y_pred, length(precip_lon)*length(precip_lat))
+    q = 0.5  # Use the desired quantile
+    quantile_pred = quantile(skipmissing(y_pred), q)
+
+    for i in 1:length(y_pred_corrected)
+        if !ismissing(y_pred_corrected[i])
+            point_quantile = searchsortedfirst(sort(y_pred_corrected), y_pred_corrected[i]) / length(y_pred_corrected)
+            quantile_actual = quantile(skipmissing(y_actual), point_quantile)
+            y_pred_corrected[i] = quantile_actual
+        end 
+    end
+    y_pred_corrected = reshape(y_pred_corrected, length(precip_lon), length(precip_lat))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# K-NN Model: Resampling Algorithm
+```{julia}
+function euclidean_distance(x::AbstractVector, y::AbstractVector)::AbstractFloat
+    return sqrt(sum((x .- y) .^ 2))
+end
+
+function nsmallest(x::AbstractVector, n::Int)::Vector{Int}
+    idx = sortperm(x)
+    return idx[1:n]
+end
+
+function knn(X::AbstractMatrix, X_i::AbstractVector, K::Int)::Tuple{Int,AbstractVector}
+    # calculate the distances between X_i and each row of X
+    dist = [euclidean_distance(X_i, X[j, :]) for j in 1:size(X, 1)]
+    idx = nsmallest(dist, K)
+    w = 1 ./ dist[idx]
+    w ./= sum(w)
+    idx_sample = sample(idx, Weights(w))
+    return (idx_sample, vec(X[idx_sample, :]))
+end
+```
+
+## Combining KNN and PCA
+```{julia}
+"""
+KNN resampling algorithm
+
+temp_train: the training temperature data. This should be the raw field, not the prinipal components. Inside the function, convert to principal components using `n_pca` principal components. 
+temp_test: the temperature data to predict. This should be the raw field, not the prinipal components. Inside the function, convert to principal components using `n_pca` principal components.
+precip_train: the training precipitation data.
+"""
+function predict_knn(temp_train, temp_test, precip_train; n_pca::Int)
+    X_train = preprocess(temp_train, temp_train)
+    X_test = preprocess(temp_test, temp_train)
+
+    # fit the PCA model to the training data
+    pca_model = fit(PCA, X_train; maxoutdim=n_pca)
+
+    # project the test data onto the PCA basis
+    train_embedded = predict(pca_model, X_train)
+    test_embedded = predict(pca_model, X_test)
+
+    # use the `knn` function for each point in the test data
+    precip_pred = map(1:size(X_test, 2)) do i
+        idx, _ = knn(train_embedded', test_embedded[:, i], 3)
+        precip_train[:, :, idx]
+    end
+
+    # return a matrix of predictions
+    return precip_pred
+end
+
+```
+
+## Predicted vs. Actual Values
+```{julia}
+t_sample = rand(1:size(temp_test, 3), 4)
+precip_pred = predict_knn(temp_train, temp_test[:, :, t_sample], precip_train; n_pca=4)
+
+p = map(eachindex(t_sample)) do ti
+    t = t_sample[ti]
+    y_pred = precip_pred[ti]'
+    y_actual = precip_test[:, :, t]'
+    cmax = max(maximum(skipmissing(y_pred)), maximum(skipmissing(y_actual)))
+    cmax = ustrip(u"mm", cmax)
+
+    p1 = heatmap(
+        precip_lon,
+        precip_lat,
+        y_pred;
+        xlabel="Longitude",
+        ylabel="Latitude",
+        title="Predicted",
+        aspect_ratio=:equal,
+        clims=(0, cmax)
+    )
+    p2 = heatmap(
+        precip_lon,
+        precip_lat,
+        y_actual;
+        xlabel="Longitude",
+        ylabel="Latitude",
+        title="Actual",
+        aspect_ratio=:equal,
+        clims=(0, cmax)
+    )
+    plot(p1, p2; layout=(2, 1), size=(1000, 400))
+end
+plot(p...; layout=(2, 3), size=(1500, 1200))
+```
+
